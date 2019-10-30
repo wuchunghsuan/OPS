@@ -82,7 +82,7 @@ public class OpsWatcher extends Thread {
                             if (this.scheduler != null) {
                                 this.scheduler.watcherPut(key, event.getKeyValue().getValue().toStringUtf8());
                             } else {
-                                this.shuffleHandler.watcherPut(key, event.getKeyValue().getValue().toStringUtf8());
+                                // this.shuffleHandler.watcherPut(key, event.getKeyValue().getValue().toStringUtf8());
                             }
                             break;
                         case DELETE:

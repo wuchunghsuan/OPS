@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "cn.edu.sjtu.ist.ops";
+option java_outer_classname = "OpsShuffleDataProto";
+option objc_class_prefix = "OPS";
+
+package opsshuffledata;
+
+service OpsShuffleData {
+    rpc transfer (stream Page) returns (stream Ack) {}
+}
+
+message Page {
+    bytes content = 1;
+    bytes pointers = 2;
+}
+
+message Ack {
+    bool isDone = 1;
+}

@@ -39,30 +39,31 @@ public class OpsWorker extends OpsNode {
     private HeartbeatThread heartbeat;
     private WatcherThread watcher;
     private OpsShuffleHandler shuffleHandler;
-    private OpsTransferer[] transferers;
-    private final int transferNum = 5;
+    // private OpsTransferer[] transferers;
+    // private final int transferNum = 5;
 
     public OpsWorker(String ip) {
         super(ip);
 
         Gson gson = new Gson();
-        this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/worker/", gson.toJson(this));
+        // this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/worker/", gson.toJson(this));
         this.watcher = new WatcherThread(OpsUtils.ETCD_NODES_PATH + "/worker");
-
+        
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         try {
             OpsConfig opsConfig = mapper.readValue(
-                    Thread.currentThread().getContextClassLoader().getResourceAsStream("config.yml"), OpsConfig.class);
-            OpsNode master = new OpsNode(opsConfig.getMasterHostName());
-            OpsConf opsConf = new OpsConf(master, opsConfig.getOpsWorkerLocalDir(), opsConfig.getOpsMasterPortGRPC(),
-                    opsConfig.getOpsWorkerPortGRPC(), opsConfig.getOpsWorkerPortHadoopGRPC());
-
+                Thread.currentThread().getContextClassLoader().getResourceAsStream("config.yml"), OpsConfig.class);
+                OpsNode master = new OpsNode(opsConfig.getMasterHostName());
+                OpsConf opsConf = new OpsConf(master, opsConfig.getOpsWorkerLocalDir(), opsConfig.getOpsMasterPortGRPC(),
+                opsConfig.getOpsWorkerPortGRPC(), opsConfig.getOpsWorkerPortHadoopGRPC());
+                
+            this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/worker/", ip + ":" + opsConfig.getOpsWorkerPortGRPC());
             shuffleHandler = new OpsShuffleHandler(opsConf, this);
 
-            transferers = new OpsTransferer[transferNum];
-            for (int i = 0; i < transferers.length; i++) {
-                transferers[i] = new OpsTransferer(i, shuffleHandler, opsConf);
-            }
+            // transferers = new OpsTransferer[transferNum];
+            // for (int i = 0; i < transferers.length; i++) {
+            //     transferers[i] = new OpsTransferer(i, shuffleHandler, opsConf);
+            // }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -72,12 +73,13 @@ public class OpsWorker extends OpsNode {
         this.heartbeat.start();
         this.watcher.start();
 
+        System.out.println("Worker start");
         logger.debug("Worker start");
         this.shuffleHandler.start();
 
-        for (OpsTransferer transferer : this.transferers) {
-            transferer.start();
-        }
+        // for (OpsTransferer transferer : this.transferers) {
+        //     transferer.start();
+        // }
     }
 
     private void blockUntilShutdown() throws InterruptedException {

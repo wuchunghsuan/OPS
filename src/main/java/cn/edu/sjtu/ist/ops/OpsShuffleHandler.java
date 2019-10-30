@@ -17,10 +17,12 @@
 package cn.edu.sjtu.ist.ops;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -67,10 +69,10 @@ public class OpsShuffleHandler extends Thread {
     private final OpsNode host;
     private final Server workerServer;
     private final OpsConf opsConf;
-    private final OpsWatcher jobWatcher;
-    private final OpsWatcher mapCompletedWatcher;
-    private final OpsWatcher mapTaskAllocWatcher;
-    private final OpsWatcher reduceTaskAllocWatcher;
+    // private final OpsWatcher jobWatcher;
+    // private final OpsWatcher mapCompletedWatcher;
+    // private final OpsWatcher mapTaskAllocWatcher;
+    // private final OpsWatcher reduceTaskAllocWatcher;
     private volatile boolean stopped = false;
     private final Set<ShuffleRichConf> pendingShuffles = new HashSet<>();
     private final Set<ShuffleHandlerTask> pendingShuffleHandlerTasks = new HashSet<>();
@@ -84,31 +86,31 @@ public class OpsShuffleHandler extends Thread {
     private final Random random = new Random();
     private Gson gson = new Gson();
 
-    private final ManagedChannel masterChannel;
-    private final OpsInternalGrpc.OpsInternalStub masterStub;
+    // private final ManagedChannel masterChannel;
+    // private final OpsShuffleDataGrpc.OpsShuffleDataStub masterStub;
 
     public OpsShuffleHandler(OpsConf opsConf, OpsNode host) {
         EtcdService.initClient();
 
         this.opsConf = opsConf;
         this.host = host;
-        OpsUtils.initLocalDir(this.opsConf.getDir());
-        this.jobWatcher = new OpsWatcher(this, OpsUtils.ETCD_JOBS_PATH);
-        this.mapCompletedWatcher = new OpsWatcher(this, OpsUtils.ETCD_MAPCOMPLETED_PATH,
-                "/mapCompleted-" + host.getIp() + "-");
-        this.mapTaskAllocWatcher = new OpsWatcher(this, OpsUtils.ETCD_MAPTASKALLOC_PATH);
-        this.reduceTaskAllocWatcher = new OpsWatcher(this, OpsUtils.ETCD_REDUCETASKALLOC_PATH);
+        // OpsUtils.initLocalDir(this.opsConf.getDir());
+        // this.jobWatcher = new OpsWatcher(this, OpsUtils.ETCD_JOBS_PATH);
+        // this.mapCompletedWatcher = new OpsWatcher(this, OpsUtils.ETCD_MAPCOMPLETED_PATH,
+        //         "/mapCompleted-" + host.getIp() + "-");
+        // this.mapTaskAllocWatcher = new OpsWatcher(this, OpsUtils.ETCD_MAPTASKALLOC_PATH);
+        // this.reduceTaskAllocWatcher = new OpsWatcher(this, OpsUtils.ETCD_REDUCETASKALLOC_PATH);
 
-        this.masterChannel = ManagedChannelBuilder.forAddress(opsConf.getMaster().getIp(), opsConf.getPortMasterGRPC())
-                .usePlaintext().build();
-        this.masterStub = OpsInternalGrpc.newStub(masterChannel);
+        // this.masterChannel = ManagedChannelBuilder.forAddress(opsConf.getMaster().getIp(), opsConf.getPortMasterGRPC())
+        //         .usePlaintext().build();
+        // this.masterStub = OpsInternalGrpc.newStub(masterChannel);
 
-        this.workerServer = ServerBuilder.forPort(this.opsConf.getPortWorkerGRPC()).addService(new OpsInternalService())
+        this.workerServer = ServerBuilder.forPort(this.opsConf.getPortWorkerGRPC()).addService(new OpsShuffleDataService())
                 .build();
     }
 
     public void shutdown() throws InterruptedException {
-        masterChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+        // masterChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
 
     @Override
@@ -117,28 +119,29 @@ public class OpsShuffleHandler extends Thread {
         try {
             this.workerServer.start();
             logger.info("gRPC workerServer started, listening on " + this.opsConf.getPortWorkerGRPC());
-            logger.info("gRPC hadoopServer started, listening on " + this.opsConf.getPortHadoopGRPC());
-            this.jobWatcher.start();
-            this.mapCompletedWatcher.start();
-            this.mapTaskAllocWatcher.start();
-            this.reduceTaskAllocWatcher.start();
+            // logger.info("gRPC hadoopServer started, listening on " + this.opsConf.getPortHadoopGRPC());
+            // this.jobWatcher.start();
+            // this.mapCompletedWatcher.start();
+            // this.mapTaskAllocWatcher.start();
+            // this.reduceTaskAllocWatcher.start();
 
             while (!stopped && !Thread.currentThread().isInterrupted()) {
-                ShuffleHandlerTask shuffleHandlerTask = null;
-                shuffleHandlerTask = this.getPendingShuffleHandlerTask();
-                switch (shuffleHandlerTask.getType()) {
-                case PREPARE_SHUFFLE:
-                    this.prepareShuffle(shuffleHandlerTask.getMap());
-                    break;
-                case SHUFFLECOMPLETED:
-                    this.shuffleCompleted(shuffleHandlerTask.getShuffleC());
-                    break;
-                case COLLECTION:
-                    this.collectIndexRecords(shuffleHandlerTask.getCollection());
-                    break;
-                default:
-                    break;
-                }
+                wait();
+                // ShuffleHandlerTask shuffleHandlerTask = null;
+                // shuffleHandlerTask = this.getPendingShuffleHandlerTask();
+                // switch (shuffleHandlerTask.getType()) {
+                // case PREPARE_SHUFFLE:
+                //     this.prepareShuffle(shuffleHandlerTask.getMap());
+                //     break;
+                // case SHUFFLECOMPLETED:
+                //     this.shuffleCompleted(shuffleHandlerTask.getShuffleC());
+                //     break;
+                // case COLLECTION:
+                //     this.collectIndexRecords(shuffleHandlerTask.getCollection());
+                //     break;
+                // default:
+                //     break;
+                // }
             }
         } catch (Exception e) {
             // TODO: handle exception
@@ -146,228 +149,263 @@ public class OpsShuffleHandler extends Thread {
         }
     }
 
-    public synchronized void watcherPut(String key, String value) {
-        if (key == OpsUtils.ETCD_JOBS_PATH) {
-            JobConf job = gson.fromJson(value, JobConf.class);
-            this.jobs.put(job.getJobId(), job);
-            this.indexReaderMapping.put(job.getJobId(), new HashMap<>());
-            logger.info("Add new job: " + job.getJobId());
+    // public synchronized void watcherPut(String key, String value) {
+    //     if (key == OpsUtils.ETCD_JOBS_PATH) {
+    //         JobConf job = gson.fromJson(value, JobConf.class);
+    //         this.jobs.put(job.getJobId(), job);
+    //         this.indexReaderMapping.put(job.getJobId(), new HashMap<>());
+    //         logger.info("Add new job: " + job.getJobId());
 
-        } else if(key == OpsUtils.ETCD_MAPTASKALLOC_PATH) {
-            MapTaskAlloc mapTaskAlloc = gson.fromJson(value, MapTaskAlloc.class);
-            this.mapTaskAllocMapping.put(mapTaskAlloc.getJob().getJobId(), mapTaskAlloc);
-            logger.info("Add MapTaskAlloc: " + mapTaskAlloc.toString());
+    //     } else if(key == OpsUtils.ETCD_MAPTASKALLOC_PATH) {
+    //         MapTaskAlloc mapTaskAlloc = gson.fromJson(value, MapTaskAlloc.class);
+    //         this.mapTaskAllocMapping.put(mapTaskAlloc.getJob().getJobId(), mapTaskAlloc);
+    //         logger.info("Add MapTaskAlloc: " + mapTaskAlloc.toString());
 
-        } else if(key == OpsUtils.ETCD_REDUCETASKALLOC_PATH) {
-            ReduceTaskAlloc reduceTaskAlloc = gson.fromJson(value, ReduceTaskAlloc.class);
-            this.reduceTaskAllocMapping.put(reduceTaskAlloc.getJob().getJobId(), reduceTaskAlloc);
-            logger.info("Add ReduceTaskAlloc: " + reduceTaskAlloc.toString());
+    //     } else if(key == OpsUtils.ETCD_REDUCETASKALLOC_PATH) {
+    //         ReduceTaskAlloc reduceTaskAlloc = gson.fromJson(value, ReduceTaskAlloc.class);
+    //         this.reduceTaskAllocMapping.put(reduceTaskAlloc.getJob().getJobId(), reduceTaskAlloc);
+    //         logger.info("Add ReduceTaskAlloc: " + reduceTaskAlloc.toString());
 
-            String jobId = reduceTaskAlloc.getJob().getJobId();
-            if(this.completedMapsMapping.containsKey(jobId)) {
-                // If there are pendingCompletedMaps, start pre-shuffle.
-                List<MapConf> completedMapList = this.completedMapsMapping.get(jobId);
-                for (MapConf map : completedMapList) {
-                    addPendingShuffleHandlerTask(new ShuffleHandlerTask(map));
-                }
-                this.completedMapsMapping.remove(jobId);
-            }
+    //         String jobId = reduceTaskAlloc.getJob().getJobId();
+    //         if(this.completedMapsMapping.containsKey(jobId)) {
+    //             // If there are pendingCompletedMaps, start pre-shuffle.
+    //             List<MapConf> completedMapList = this.completedMapsMapping.get(jobId);
+    //             for (MapConf map : completedMapList) {
+    //                 addPendingShuffleHandlerTask(new ShuffleHandlerTask(map));
+    //             }
+    //             this.completedMapsMapping.remove(jobId);
+    //         }
 
-        } else if (key == OpsUtils.ETCD_MAPCOMPLETED_PATH) {
-            MapConf map = gson.fromJson(value, MapConf.class);
-            if (!jobs.containsKey(map.getJobId())) {
-                logger.error("JobId not found: " + map.getJobId());
-                return;
-            }
-            JobConf job = jobs.get(map.getJobId());
-            // Get IndexReader
-            try {
-                IndexReader indexReader = new IndexReader(map.getIndexPath().toString());
-                HashMap<String, IndexReader> irMap = this.indexReaderMapping.get(job.getJobId());
-                irMap.put(map.getTaskId(), indexReader);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    //     } else if (key == OpsUtils.ETCD_MAPCOMPLETED_PATH) {
+    //         MapConf map = gson.fromJson(value, MapConf.class);
+    //         if (!jobs.containsKey(map.getJobId())) {
+    //             logger.error("JobId not found: " + map.getJobId());
+    //             return;
+    //         }
+    //         JobConf job = jobs.get(map.getJobId());
+    //         // Get IndexReader
+    //         try {
+    //             IndexReader indexReader = new IndexReader(map.getIndexPath().toString());
+    //             HashMap<String, IndexReader> irMap = this.indexReaderMapping.get(job.getJobId());
+    //             irMap.put(map.getTaskId(), indexReader);
+    //         } catch (Exception e) {
+    //             e.printStackTrace();
+    //         }
 
-            if(this.reduceTaskAllocMapping.containsKey(map.getJobId())) {
-                // Add pendingShuffles, notify transferer to shuffle data
-                addPendingShuffleHandlerTask(new ShuffleHandlerTask(map));
-            } else {
-                // If ReducePreAlloc is not ready, wait for it.
-                if(!this.completedMapsMapping.containsKey(map.getJobId())) {
-                    List<MapConf> mapList = new LinkedList<>();
-                    mapList.add(map);
-                    this.completedMapsMapping.put(map.getJobId(), mapList);
-                } else {
-                    List<MapConf> mapList = this.completedMapsMapping.get(map.getJobId());
-                    mapList.add(map);
-                    this.completedMapsMapping.put(map.getJobId(), mapList);
-                }
-                logger.debug("Waiting for ReduceTaskAlloc.");
-            }
+    //         if(this.reduceTaskAllocMapping.containsKey(map.getJobId())) {
+    //             // Add pendingShuffles, notify transferer to shuffle data
+    //             addPendingShuffleHandlerTask(new ShuffleHandlerTask(map));
+    //         } else {
+    //             // If ReducePreAlloc is not ready, wait for it.
+    //             if(!this.completedMapsMapping.containsKey(map.getJobId())) {
+    //                 List<MapConf> mapList = new LinkedList<>();
+    //                 mapList.add(map);
+    //                 this.completedMapsMapping.put(map.getJobId(), mapList);
+    //             } else {
+    //                 List<MapConf> mapList = this.completedMapsMapping.get(map.getJobId());
+    //                 mapList.add(map);
+    //                 this.completedMapsMapping.put(map.getJobId(), mapList);
+    //             }
+    //             logger.debug("Waiting for ReduceTaskAlloc.");
+    //         }
             
 
-            // Add pendingShuffleHandlerTask, collection IndexRecord and put ETCD
-            HashMap<String, IndexReader> irMap = this.indexReaderMapping.get(job.getJobId());
-            IndexReader indexReader = irMap.get(map.getTaskId());
-            if (indexReader == null) {
-                logger.error("indexReader not found. mapTaskId -> " + map.getTaskId());
-                return;
-            }
-            List<IndexRecord> records = new LinkedList<>();
-            for(int i = 0; i < indexReader.getPartitions(); i++) {
-                records.add(indexReader.getIndex(i));
-            }
-            CollectionConf collectionConf = new CollectionConf(map.getOpsNode().getIp(), map.getJobId(), map.getTaskId(), records);
-            addPendingShuffleHandlerTask(new ShuffleHandlerTask(collectionConf));
-        }
-    }
+    //         // Add pendingShuffleHandlerTask, collection IndexRecord and put ETCD
+    //         HashMap<String, IndexReader> irMap = this.indexReaderMapping.get(job.getJobId());
+    //         IndexReader indexReader = irMap.get(map.getTaskId());
+    //         if (indexReader == null) {
+    //             logger.error("indexReader not found. mapTaskId -> " + map.getTaskId());
+    //             return;
+    //         }
+    //         List<IndexRecord> records = new LinkedList<>();
+    //         for(int i = 0; i < indexReader.getPartitions(); i++) {
+    //             records.add(indexReader.getIndex(i));
+    //         }
+    //         CollectionConf collectionConf = new CollectionConf(map.getOpsNode().getIp(), map.getJobId(), map.getTaskId(), records);
+    //         addPendingShuffleHandlerTask(new ShuffleHandlerTask(collectionConf));
+    //     }
+    // }
 
-    public synchronized ShuffleRichConf getPendingShuffle() throws InterruptedException {
-        while (pendingShuffles.isEmpty()) {
-            wait();
-        }
+    // public synchronized ShuffleRichConf getPendingShuffle() throws InterruptedException {
+    //     while (pendingShuffles.isEmpty()) {
+    //         wait();
+    //     }
 
-        ShuffleRichConf shuffle = null;
-        Iterator<ShuffleRichConf> iter = pendingShuffles.iterator();
-        int numToPick = random.nextInt(pendingShuffles.size());
-        for (int i = 0; i <= numToPick; ++i) {
-            shuffle = iter.next();
-        }
+    //     ShuffleRichConf shuffle = null;
+    //     Iterator<ShuffleRichConf> iter = pendingShuffles.iterator();
+    //     int numToPick = random.nextInt(pendingShuffles.size());
+    //     for (int i = 0; i <= numToPick; ++i) {
+    //         shuffle = iter.next();
+    //     }
 
-        pendingShuffles.remove(shuffle);
+    //     pendingShuffles.remove(shuffle);
 
-        logger.debug("Get pendingShuffle");
-        return shuffle;
-    }
+    //     logger.debug("Get pendingShuffle");
+    //     return shuffle;
+    // }
 
-    public synchronized ShuffleHandlerTask getPendingShuffleHandlerTask() throws InterruptedException {
-        while (this.pendingShuffleHandlerTasks.isEmpty()) {
-            wait();
-        }
+    // public synchronized ShuffleHandlerTask getPendingShuffleHandlerTask() throws InterruptedException {
+    //     while (this.pendingShuffleHandlerTasks.isEmpty()) {
+    //         wait();
+    //     }
 
-        ShuffleHandlerTask task = null;
+    //     ShuffleHandlerTask task = null;
 
-        Iterator<ShuffleHandlerTask> iter = this.pendingShuffleHandlerTasks.iterator();
-        int numToPick = random.nextInt(this.pendingShuffleHandlerTasks.size());
-        for (int i = 0; i <= numToPick; ++i) {
-            task = iter.next();
-        }
-        this.pendingShuffleHandlerTasks.remove(task);
+    //     Iterator<ShuffleHandlerTask> iter = this.pendingShuffleHandlerTasks.iterator();
+    //     int numToPick = random.nextInt(this.pendingShuffleHandlerTasks.size());
+    //     for (int i = 0; i <= numToPick; ++i) {
+    //         task = iter.next();
+    //     }
+    //     this.pendingShuffleHandlerTasks.remove(task);
 
-        logger.debug("Get pendingShuffleHandlerTask: " + task.toString());
-        return task;
-    }
+    //     logger.debug("Get pendingShuffleHandlerTask: " + task.toString());
+    //     return task;
+    // }
 
-    public JobConf getJob(String jobId) {
-        return this.jobs.get(jobId);
-    }
+    // public JobConf getJob(String jobId) {
+    //     return this.jobs.get(jobId);
+    // }
 
-    public synchronized void addPendingShuffles(ShuffleRichConf shuffle) {
-        pendingShuffles.add(shuffle);
-        logger.debug("Add pendingShuffles task " + shuffle.getTask().getTaskId() + " to node "
-                + shuffle.getDstNode().getIp());
-        notifyAll();
-    }
+    // public synchronized void addPendingShuffles(ShuffleRichConf shuffle) {
+    //     pendingShuffles.add(shuffle);
+    //     logger.debug("Add pendingShuffles task " + shuffle.getTask().getTaskId() + " to node "
+    //             + shuffle.getDstNode().getIp());
+    //     notifyAll();
+    // }
 
-    public synchronized void addPendingShuffleHandlerTask(ShuffleHandlerTask task) {
-        pendingShuffleHandlerTasks.add(task);
-        logger.debug("Add pendingShuffleHandlerTasks: " + task.toString());
-        notifyAll();
-    }
+    // public synchronized void addPendingShuffleHandlerTask(ShuffleHandlerTask task) {
+    //     pendingShuffleHandlerTasks.add(task);
+    //     logger.debug("Add pendingShuffleHandlerTasks: " + task.toString());
+    //     notifyAll();
+    // }
 
-    public void shuffleCompleted(ShuffleCompletedConf shuffleC) {
-        EtcdService.put(
-                OpsUtils.buildKeyShuffleCompleted(shuffleC.getDstNode().getIp(), shuffleC.getTask().getJobId(),
-                        shuffleC.getNum().toString(), shuffleC.getTask().getTaskId()),
-                gson.toJson(shuffleC.getHadoopPath()));
-    }
+    // public void shuffleCompleted(ShuffleCompletedConf shuffleC) {
+    //     EtcdService.put(
+    //             OpsUtils.buildKeyShuffleCompleted(shuffleC.getDstNode().getIp(), shuffleC.getTask().getJobId(),
+    //                     shuffleC.getNum().toString(), shuffleC.getTask().getTaskId()),
+    //             gson.toJson(shuffleC.getHadoopPath()));
+    // }
 
-    public void collectIndexRecords(CollectionConf collection) {
-        EtcdService.put(
-                OpsUtils.buildKeyIndexRecords(collection.getHost(), collection.getJobId(), collection.getMapId()),
-                gson.toJson(collection));
-    }
+    // public void collectIndexRecords(CollectionConf collection) {
+    //     EtcdService.put(
+    //             OpsUtils.buildKeyIndexRecords(collection.getHost(), collection.getJobId(), collection.getMapId()),
+    //             gson.toJson(collection));
+    // }
 
-    public void prepareShuffle(MapConf map) { 
-        FileInputStream fileInput = null;
-        BufferedInputStream input = null;
-        try {
-            ReduceTaskAlloc reduceTaskAlloc = this.reduceTaskAllocMapping.get(map.getJobId());
-            HashMap<String, IndexReader> irMap = this.getIndexReaderMap(map.getJobId());
-            IndexReader indexReader = irMap.get(map.getTaskId());
-            fileInput = new FileInputStream(new File(map.getPath()));
-            input = new BufferedInputStream(fileInput, 1024*1024*50);
+    // public void prepareShuffle(MapConf map) { 
+    //     FileInputStream fileInput = null;
+    //     BufferedInputStream input = null;
+    //     try {
+    //         ReduceTaskAlloc reduceTaskAlloc = this.reduceTaskAllocMapping.get(map.getJobId());
+    //         HashMap<String, IndexReader> irMap = this.getIndexReaderMap(map.getJobId());
+    //         IndexReader indexReader = irMap.get(map.getTaskId());
+    //         fileInput = new FileInputStream(new File(map.getPath()));
+    //         input = new BufferedInputStream(fileInput, 1024*1024*50);
 
-            JobConf job = this.jobs.get(map.getJobId());
-            long pos = 0;
-            for (OpsNode node : job.getWorkers()) {
-                for (Integer num : reduceTaskAlloc.getReducePreAllocOrder(node.getIp())) {
+    //         JobConf job = this.jobs.get(map.getJobId());
+    //         long pos = 0;
+    //         for (OpsNode node : job.getWorkers()) {
+    //             for (Integer num : reduceTaskAlloc.getReducePreAllocOrder(node.getIp())) {
 
-                    IndexRecord record = indexReader.getIndex(num);
-                    long startOffset = record.getStartOffset();
-                    long partLength = record.getPartLength();
+    //                 IndexRecord record = indexReader.getIndex(num);
+    //                 long startOffset = record.getStartOffset();
+    //                 long partLength = record.getPartLength();
                     
-                    byte[] data = new byte[(int) partLength];
-                    int length;
+    //                 byte[] data = new byte[(int) partLength];
+    //                 int length;
 
-                    if (pos < startOffset) {
-                        logger.debug("why skip?: " + startOffset + ", " + pos + ", " + num);
-                        logger.debug("skip: " + input.skip(startOffset - pos));
-                        pos = startOffset;
-                    }
-                    // logger.debug("(int) startOffset, (int) partLength :" + (int) startOffset +", "+ (int) partLength + ", "+startOffset +", "+ partLength + ", ");
-                    length = input.read(data, 0, (int) partLength);
-                    if(length > 0) {
-                        pos += length;
-                    }
-                    logger.debug("Read length: " + length + ", " + num);
+    //                 if (pos < startOffset) {
+    //                     logger.debug("why skip?: " + startOffset + ", " + pos + ", " + num);
+    //                     logger.debug("skip: " + input.skip(startOffset - pos));
+    //                     pos = startOffset;
+    //                 }
+    //                 // logger.debug("(int) startOffset, (int) partLength :" + (int) startOffset +", "+ (int) partLength + ", "+startOffset +", "+ partLength + ", ");
+    //                 length = input.read(data, 0, (int) partLength);
+    //                 if(length > 0) {
+    //                     pos += length;
+    //                 }
+    //                 logger.debug("Read length: " + length + ", " + num);
                     
-                    addPendingShuffles(new ShuffleRichConf(data, map, node, num));
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                if (input != null) {
-                    input.close();
-                }
-                if (fileInput != null) {
-                    fileInput.close();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
+    //                 addPendingShuffles(new ShuffleRichConf(data, map, node, num));
+    //             }
+    //         }
+    //     } catch (Exception e) {
+    //         e.printStackTrace();
+    //     } finally {
+    //         try {
+    //             if (input != null) {
+    //                 input.close();
+    //             }
+    //             if (fileInput != null) {
+    //                 fileInput.close();
+    //             }
+    //         } catch (Exception e) {
+    //             e.printStackTrace();
+    //         }
+    //     }
+    // }
 
-    public HashMap<String, IndexReader> getIndexReaderMap(String jobId) {
-        return this.indexReaderMapping.get(jobId);
-    }
+    // public HashMap<String, IndexReader> getIndexReaderMap(String jobId) {
+    //     return this.indexReaderMapping.get(jobId);
+    // }
 
-    private class OpsInternalService extends OpsInternalGrpc.OpsInternalImplBase {
+    private class OpsShuffleDataService extends OpsShuffleDataGrpc.OpsShuffleDataImplBase {
         @Override
-        public StreamObserver<Chunk> transfer(StreamObserver<ParentPath> responseObserver) {
-            return new StreamObserver<Chunk>() {
+        public StreamObserver<Page> transfer(StreamObserver<Ack> responseObserver) {
+            return new StreamObserver<Page>() {
                 @Override
-                public void onNext(Chunk chunk) {
+                public void onNext(Page page) {
+                    ByteArrayInputStream bInput = null;
+                    ObjectInputStream oInput = null;
                     try {
-                        boolean isFirstChunk = chunk.getIsFirstChunk();
-                        String path = chunk.getPath();
-                        File file = new File(opsConf.getDir(), path);
-                        if (isFirstChunk) {
-                            if (file.exists()) {
-                                FileUtils.forceDelete(file);
-                                logger.debug("Delete the namesake file: " + file.toString());
-                            }
-                            FileUtils.forceMkdirParent(file);
-                            file.createNewFile();
-                            logger.debug("mkdir & create file for shuffle data: " + file.toString());
-                        }
+                        // boolean isFirstChunk = chunk.getPage();
+                        // String path = chunk.getPath();
+                        // File file = new File(opsConf.getDir(), path);
+                        // if (isFirstChunk) {
+                        //     if (file.exists()) {
+                        //         FileUtils.forceDelete(file);
+                        //         logger.debug("Delete the namesake file: " + file.toString());
+                        //     }
+                        //     FileUtils.forceMkdirParent(file);
+                        //     file.createNewFile();
+                        //     logger.debug("mkdir & create file for shuffle data: " + file.toString());
+                        // }
+                        File file = new File(opsConf.getDir(), "tmp.data");
                         ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
-                        byteSink.write(chunk.getContent().toByteArray());
-                        logger.debug("Receive chunk: {Path: " + file.toString() + ", Length: " + file.length() + "}");
+                        byteSink.write(page.getContent().toByteArray());
+
+
+                        bInput = new ByteArrayInputStream(page.getPointers().toByteArray());
+                        oInput = new ObjectInputStream(bInput);
+                        List<OpsPointer> pointers = (List<OpsPointer>) oInput.readObject();
+
+                        // final int diskWriteBufferSize = 1024 * 1024;
+                        // final byte[] writeBuffer = new byte[diskWriteBufferSize];
+                        int i = 0;
+                        for (OpsPointer pointer : pointers) {
+                            if(i < 5) {
+                                break;
+                            }
+                            System.out.println("Test pointer " + i + " :" + pointer.pageOffset + ", " + pointer.partitionId + ", " + pointer.length);
+                            i++;
+                          // DiskBlockObjectWriter writer = partitionWriters[pointer.partitionId];
+                        //   final Object recordPage = page.getBaseObject();
+                        //   final long recordOffsetInPage = pointer.pageOffset;
+                          // int dataRemaining = UnsafeAlignedOffset.getSize(recordPage, recordOffsetInPage);
+                        //   long dataRemaining = pointer.length;
+                        //   long recordReadPosition = recordOffsetInPage;
+                        //   while (dataRemaining > 0) {
+                        //     final int toTransfer = (int)Math.min(diskWriteBufferSize, dataRemaining);
+                            // Platform.copyMemory(
+                            //   recordPage, recordReadPosition, writeBuffer, Platform.BYTE_ARRAY_OFFSET, toTransfer);
+                            // writer.write(writeBuffer, 0, toTransfer);
+                        //     recordReadPosition += toTransfer;
+                        //     dataRemaining -= toTransfer;
+                        //   }
+                          // writer.recordWritten();
+                        }
+
+                        logger.debug("Receive page: {Path: " + file.toString() + ", Length: " + file.length() + "}");
                     } catch (IOException e){
                         e.printStackTrace();
 
@@ -381,6 +419,14 @@ public class OpsShuffleHandler extends Thread {
                         // }
                     } catch (Exception e) {
                         e.printStackTrace();
+                    } finally {
+                        try {
+                            bInput.close();
+                            oInput.close();
+                        } catch (Exception e) {
+                            //TODO: handle exception
+                            e.printStackTrace();
+                        }
                     }
                 }
 
@@ -392,8 +438,8 @@ public class OpsShuffleHandler extends Thread {
 
                 @Override
                 public void onCompleted() {
-                    ParentPath path = ParentPath.newBuilder().setPath(opsConf.getDir()).build();
-                    responseObserver.onNext(path);
+                    Ack ack = Ack.newBuilder().setIsDone(true).build();
+                    responseObserver.onNext(ack);
                     responseObserver.onCompleted();
                 }
             };

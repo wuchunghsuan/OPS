@@ -62,9 +62,10 @@ class OpsTransferer extends Thread {
             logger.info("ops-transferer-[" + this.num + "] started");
 
             while (!Thread.currentThread().isInterrupted()) {
-                ShuffleRichConf shuffle = null;
-                shuffle = shuffleHandler.getPendingShuffle();
-                transfer(shuffle);
+                wait();
+                // ShuffleRichConf shuffle = null;
+                // shuffle = shuffleHandler.getPendingShuffle();
+                // transfer(shuffle);
             }
             // server.awaitTermination();
             // channel.wait();
@@ -78,9 +79,9 @@ class OpsTransferer extends Thread {
         logger.info("getPendingShuffle: task " + shuffle.getTask().getTaskId() + " to node "
                 + shuffle.getDstNode().getIp());
 
-        HashMap<String, IndexReader> irMap = this.shuffleHandler.getIndexReaderMap(shuffle.getTask().getJobId());
-        IndexReader indexReader = irMap.get(shuffle.getTask().getTaskId());
-        IndexRecord record = indexReader.getIndex(shuffle.getNum());
+        // HashMap<String, IndexReader> irMap = this.shuffleHandler.getIndexReaderMap(shuffle.getTask().getJobId());
+        // IndexReader indexReader = irMap.get(shuffle.getTask().getTaskId());
+        // IndexRecord record = indexReader.getIndex(shuffle.getNum());
             
         ManagedChannel channel = ManagedChannelBuilder
         .forAddress(shuffle.getDstNode().getIp(), opsConf.getPortWorkerGRPC()).usePlaintext().build();
@@ -104,7 +105,7 @@ class OpsTransferer extends Thread {
             public void onError(Throwable t) {
                 logger.error("gRPC error.", t.getMessage());
                 logger.info("gRPC channel break down. Re-addPendingShuffle.");
-                shuffleHandler.addPendingShuffles(shuffle);
+                // shuffleHandler.addPendingShuffles(shuffle);
                 try {
                     channel.shutdown().awaitTermination(100, TimeUnit.MILLISECONDS);
                 } catch (Exception e) {
@@ -115,21 +116,21 @@ class OpsTransferer extends Thread {
             
             @Override
             public void onCompleted() {
-                logger.debug("Transfer completed.");
+                // logger.debug("Transfer completed.");
 
-                long duration = System.currentTimeMillis() - start;
-                logger.info("[OPS]-" + shuffle.getTask().getJobId() + "-" + start + "-" + duration + "-" + shuffle.getData().length);
+                // long duration = System.currentTimeMillis() - start;
+                // logger.info("[OPS]-" + shuffle.getTask().getJobId() + "-" + start + "-" + duration + "-" + shuffle.getData().length);
             
-                HadoopPath hadoopPath = new HadoopPath(new File(parentPath, path).toString(), record.getPartLength(),
-                record.getRawLength());
-                ShuffleCompletedConf shuffleC = new ShuffleCompletedConf(new ShuffleConf(shuffle.getTask(), shuffle.getDstNode(), shuffle.getNum()), hadoopPath);
-                shuffleHandler.addPendingShuffleHandlerTask(new ShuffleHandlerTask(shuffleC));
-                try {
-                    channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    //TODO: handle exception
-                }
+                // HadoopPath hadoopPath = new HadoopPath(new File(parentPath, path).toString(), record.getPartLength(),
+                // record.getRawLength());
+                // ShuffleCompletedConf shuffleC = new ShuffleCompletedConf(new ShuffleConf(shuffle.getTask(), shuffle.getDstNode(), shuffle.getNum()), hadoopPath);
+                // shuffleHandler.addPendingShuffleHandlerTask(new ShuffleHandlerTask(shuffleC));
+                // try {
+                //     channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+                // } catch (Exception e) {
+                //     e.printStackTrace();
+                //     //TODO: handle exception
+                // }
             }
         });
             
