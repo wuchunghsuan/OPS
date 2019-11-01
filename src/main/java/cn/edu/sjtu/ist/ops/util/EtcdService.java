@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -47,6 +48,19 @@ public class EtcdService {
                         OpsConfig.class);
                 client = Client.builder().endpoints(conf.getEtcd().getEndpoints()).build();
             } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    /**
+     * 
+     */
+    public static synchronized void initClient(Collection<String> endpoints) {
+        if (null == client) {
+            try {
+                System.out.println("Init etcd: " + endpoints);
+                client = Client.builder().endpoints(endpoints).build();
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
