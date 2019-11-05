@@ -12,8 +12,11 @@ service OpsShuffleData {
 }
 
 message Page {
-    bytes content = 1;
-    bytes pointers = 2;
+    repeated int64 content = 1;
+    // bytes pointers = 2;
+    repeated int64 offsets = 2;
+    repeated int64 lengths = 3;
+    int32 partitionId = 4;
 }
 
 message Ack {

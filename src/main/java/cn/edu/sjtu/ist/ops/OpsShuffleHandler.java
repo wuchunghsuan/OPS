@@ -17,12 +17,10 @@
 package cn.edu.sjtu.ist.ops;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -126,7 +124,9 @@ public class OpsShuffleHandler extends Thread {
             // this.reduceTaskAllocWatcher.start();
 
             while (!stopped && !Thread.currentThread().isInterrupted()) {
-                wait();
+                synchronized(this) {
+                    wait();
+                }
                 // ShuffleHandlerTask shuffleHandlerTask = null;
                 // shuffleHandlerTask = this.getPendingShuffleHandlerTask();
                 // switch (shuffleHandlerTask.getType()) {
@@ -355,8 +355,6 @@ public class OpsShuffleHandler extends Thread {
             return new StreamObserver<Page>() {
                 @Override
                 public void onNext(Page page) {
-                    ByteArrayInputStream bInput = null;
-                    ObjectInputStream oInput = null;
                     try {
                         // boolean isFirstChunk = chunk.getPage();
                         // String path = chunk.getPath();
@@ -370,20 +368,32 @@ public class OpsShuffleHandler extends Thread {
                         //     file.createNewFile();
                         //     logger.debug("mkdir & create file for shuffle data: " + file.toString());
                         // }
+                        System.out.println("OnNext");
                         File file = new File(opsConf.getDir(), "tmp.data");
-                        ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
-                        byteSink.write(page.getContent().toByteArray());
+                        // ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
+                        // byteSink.write(page.getContent().toByteArray());
+                        List<Long> content = page.getContentList();
+                        int i = 0;
+                        for (Long tmp : content) {
+                            if(i > 5) {
+                                break;
+                            }
+                            System.out.println("Test content " + i + " :" + tmp);
+                            i++;
+                        }
 
-
-                        bInput = new ByteArrayInputStream(page.getPointers().toByteArray());
-                        oInput = new ObjectInputStream(bInput);
-                        List<OpsPointer> pointers = (List<OpsPointer>) oInput.readObject();
+                        int partitionId = page.getPartitionId();
+                        List<OpsPointer> pointers = new LinkedList<>();
+                        for(i = 0; i < page.getOffsetsCount(); i++) {
+                            pointers.add(
+                                    new OpsPointer(page.getOffsets(i), page.getLengths(i), partitionId));
+                        }
 
                         // final int diskWriteBufferSize = 1024 * 1024;
                         // final byte[] writeBuffer = new byte[diskWriteBufferSize];
-                        int i = 0;
+                        i = 0;
                         for (OpsPointer pointer : pointers) {
-                            if(i < 5) {
+                            if(i > 5) {
                                 break;
                             }
                             System.out.println("Test pointer " + i + " :" + pointer.pageOffset + ", " + pointer.partitionId + ", " + pointer.length);
@@ -406,7 +416,7 @@ public class OpsShuffleHandler extends Thread {
                         }
 
                         logger.debug("Receive page: {Path: " + file.toString() + ", Length: " + file.length() + "}");
-                    } catch (IOException e){
+                    } catch (Exception e){
                         e.printStackTrace();
 
                         logger.error("transfer error. Wait and retry.");
@@ -417,16 +427,6 @@ public class OpsShuffleHandler extends Thread {
                         // } catch (Exception ee) {
                         //     //TODO: handle exception
                         // }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    } finally {
-                        try {
-                            bInput.close();
-                            oInput.close();
-                        } catch (Exception e) {
-                            //TODO: handle exception
-                            e.printStackTrace();
-                        }
                     }
                 }
 

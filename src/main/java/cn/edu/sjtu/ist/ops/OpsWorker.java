@@ -47,7 +47,7 @@ public class OpsWorker extends OpsNode {
 
         Gson gson = new Gson();
         // this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/worker/", gson.toJson(this));
-        this.watcher = new WatcherThread(OpsUtils.ETCD_NODES_PATH + "/worker");
+        // this.watcher = new WatcherThread(OpsUtils.ETCD_NODES_PATH + "/worker");
         
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         try {
@@ -71,7 +71,7 @@ public class OpsWorker extends OpsNode {
 
     public void start() {
         this.heartbeat.start();
-        this.watcher.start();
+        // this.watcher.start();
 
         System.out.println("Worker start");
         logger.debug("Worker start");
@@ -92,7 +92,7 @@ public class OpsWorker extends OpsNode {
 
         try {
             InetAddress addr = InetAddress.getLocalHost();
-            OpsWorker opsWorker = new OpsWorker(addr.getHostName().toLowerCase());
+            OpsWorker opsWorker = new OpsWorker(addr.getHostAddress());
 
             opsWorker.start();
             opsWorker.blockUntilShutdown();
