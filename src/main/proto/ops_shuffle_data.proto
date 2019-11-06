@@ -16,7 +16,9 @@ message Page {
     // bytes pointers = 2;
     repeated int64 offsets = 2;
     repeated int64 lengths = 3;
-    int32 partitionId = 4;
+    string appId = 4;
+    int32 mapId = 5;
+    int32 partitionId = 6;
 }
 
 message Ack {

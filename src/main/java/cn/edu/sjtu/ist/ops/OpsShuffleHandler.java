@@ -16,6 +16,8 @@
 
 package cn.edu.sjtu.ist.ops;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -369,10 +371,14 @@ public class OpsShuffleHandler extends Thread {
                         //     logger.debug("mkdir & create file for shuffle data: " + file.toString());
                         // }
                         System.out.println("OnNext");
-                        File file = new File(opsConf.getDir(), "tmp.data");
-                        // ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
-                        // byteSink.write(page.getContent().toByteArray());
+                        String appId = page.getAppId();
+                        int mapId = page.getMapId();
+                        int partitionId = page.getPartitionId();
+
                         List<Long> content = page.getContentList();
+
+                        // Test grpc
+                        System.out.println("Content size: " + content.size());
                         int i = 0;
                         for (Long tmp : content) {
                             if(i > 5) {
@@ -382,15 +388,28 @@ public class OpsShuffleHandler extends Thread {
                             i++;
                         }
 
-                        int partitionId = page.getPartitionId();
+                        // Get content, cast long[] to byte[]
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        DataOutputStream dos = new DataOutputStream(baos);
+                        for (Long tmp : content) {
+                            dos.writeLong(tmp);
+                        }
+                        dos.close();
+                        byte[] longBytes = baos.toByteArray();
+
+                        File file = new File(opsConf.getDir(), OpsUtils.getMapOutputPath(appId, Integer.toString(mapId), partitionId));
+                        ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
+                        byteSink.write(baos.toByteArray());
+                        baos.close();
+
+                        // Get pointers
                         List<OpsPointer> pointers = new LinkedList<>();
                         for(i = 0; i < page.getOffsetsCount(); i++) {
                             pointers.add(
                                     new OpsPointer(page.getOffsets(i), page.getLengths(i), partitionId));
                         }
 
-                        // final int diskWriteBufferSize = 1024 * 1024;
-                        // final byte[] writeBuffer = new byte[diskWriteBufferSize];
+                        // Test grpc pointer
                         i = 0;
                         for (OpsPointer pointer : pointers) {
                             if(i > 5) {
@@ -398,21 +417,6 @@ public class OpsShuffleHandler extends Thread {
                             }
                             System.out.println("Test pointer " + i + " :" + pointer.pageOffset + ", " + pointer.partitionId + ", " + pointer.length);
                             i++;
-                          // DiskBlockObjectWriter writer = partitionWriters[pointer.partitionId];
-                        //   final Object recordPage = page.getBaseObject();
-                        //   final long recordOffsetInPage = pointer.pageOffset;
-                          // int dataRemaining = UnsafeAlignedOffset.getSize(recordPage, recordOffsetInPage);
-                        //   long dataRemaining = pointer.length;
-                        //   long recordReadPosition = recordOffsetInPage;
-                        //   while (dataRemaining > 0) {
-                        //     final int toTransfer = (int)Math.min(diskWriteBufferSize, dataRemaining);
-                            // Platform.copyMemory(
-                            //   recordPage, recordReadPosition, writeBuffer, Platform.BYTE_ARRAY_OFFSET, toTransfer);
-                            // writer.write(writeBuffer, 0, toTransfer);
-                        //     recordReadPosition += toTransfer;
-                        //     dataRemaining -= toTransfer;
-                        //   }
-                          // writer.recordWritten();
                         }
 
                         logger.debug("Receive page: {Path: " + file.toString() + ", Length: " + file.length() + "}");

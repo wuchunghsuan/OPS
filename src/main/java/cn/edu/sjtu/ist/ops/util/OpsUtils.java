@@ -90,6 +90,6 @@ public class OpsUtils {
     }
 
     public static String getMapOutputPath(String jobId, String taskId, Integer num) {
-        return "shuffle/" + jobId + "/" + taskId + "/" + "map_" + num + ".out";
+        return jobId + "-" + taskId + "-" + "map_" + num + ".out";
     }
 }
