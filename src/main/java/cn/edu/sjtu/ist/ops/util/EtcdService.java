@@ -147,7 +147,7 @@ public class EtcdService {
      */
     public static void register(String prefix, String value) {
         if (leaseId == 0) {
-            leaseId = lease(prefix, value, 180L);
+            leaseId = lease(prefix, value, 20L);
         } else {
             keepAliveOnce(leaseId);
         }
