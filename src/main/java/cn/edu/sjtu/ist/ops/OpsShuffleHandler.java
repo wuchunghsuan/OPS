@@ -127,12 +127,15 @@ public class OpsShuffleHandler extends Thread {
                 public void onNext(Page page) {
                     try {
                         ByteString content = page.getContent();
-                        File file = new File(page.getPath());
-                        ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
-                        byteSink.write(content.toByteArray());
+                        String filename = page.getPath().intern();
+                        synchronized(filename) {
+                            File file = new File(filename);
+                            ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
+                            byteSink.write(content.toByteArray());
+                        }
 
                         if(path == null) {
-                            path = page.getPath();
+                            path = filename;
                         }
                         count++;
                         // logger.debug("Receive page: {Path: " + file.toString() + ", Length: " + file.length() + "}");
