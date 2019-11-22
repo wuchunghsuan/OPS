@@ -130,6 +130,9 @@ public class OpsShuffleHandler extends Thread {
                         String filename = page.getPath().intern();
                         synchronized(filename) {
                             File file = new File(filename);
+                            if(!file.exists()) {
+                                file.createNewFile();
+                            }
                             ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
                             byteSink.write(content.toByteArray());
                         }
