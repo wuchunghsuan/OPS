@@ -3,12 +3,12 @@ ops:
     hostname: "192.168.2.11"
     port_grpc: 14010
   worker:
-    localDir: "/home/root/tmp_OPS/"
+    localDir: "/root/tmp_OPS/"
     port_grpc: 14020
     port_hadoop_grpc: 14030
 
 etcd:
   endpoints:
-    - "http://192.168.2.11:2379"
-    - "http://192.168.2.12:2379"
-    - "http://192.168.2.13:2379"
+    - "http://172.31.0.46:2379"
+    - "http://172.31.14.247:2379"
+    - "http://172.31.2.161:2379"

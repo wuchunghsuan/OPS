@@ -46,7 +46,7 @@ public class OpsMaster extends OpsNode {
         super(ip);
 
         Gson gson = new Gson();
-        this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/master/", gson.toJson(this));
+        this.heartbeat = new HeartbeatThread(OpsUtils.ETCD_NODES_PATH + "/master/", ip);
         this.watcher = new WatcherThread(OpsUtils.ETCD_NODES_PATH + "/worker");
 
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
@@ -80,6 +80,7 @@ public class OpsMaster extends OpsNode {
 
     public static void main(String[] args) throws InterruptedException {
         Thread.currentThread().setName("ops-master");
+        System.out.println("Start Master.");
         EtcdService.initClient();
 
         try {

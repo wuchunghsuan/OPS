@@ -23,6 +23,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -80,6 +81,7 @@ public class OpsShuffleHandler extends Thread {
     private final HashMap<String, ReduceTaskAlloc> reduceTaskAllocMapping = new HashMap<String, ReduceTaskAlloc>();
     private final HashMap<String, List<MapConf>> completedMapsMapping = new HashMap<String, List<MapConf>>();
     private final HashMap<String, HashMap<String, IndexReader>> indexReaderMapping = new HashMap<>();
+    private final HashMap<String, OutputStream> streamMap = new HashMap<>();
     private final Random random = new Random();
     private Gson gson = new Gson();
 
@@ -96,6 +98,7 @@ public class OpsShuffleHandler extends Thread {
     }
 
     public void shutdown() throws InterruptedException {
+        cleanAllStreams();
         // masterChannel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
 
@@ -114,33 +117,66 @@ public class OpsShuffleHandler extends Thread {
         } catch (Exception e) {
             // TODO: handle exception
             e.printStackTrace();
+        } finally {
+            cleanAllStreams();
         }
+    }
+
+    public synchronized void cleanAllStreams() {
+        System.out.println("Clean up all streams.");
+        
+        for (OutputStream stream : this.streamMap.values()) {
+            try {
+                stream.flush();
+                stream.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        this.streamMap.clear();
+    }
+
+    public synchronized void flushStreams() {
+        System.out.println("Flush streams.");
+        
+        for (OutputStream stream : this.streamMap.values()) {
+            try {
+                stream.flush();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public synchronized void write(String path, byte[] content) throws IOException{
+        if(!this.streamMap.containsKey(path)) {
+            File file = new File(path);
+            if(!file.exists()) {
+                file.createNewFile();
+            }
+            ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
+            this.streamMap.put(path, byteSink.openBufferedStream());
+        }
+        this.streamMap.get(path).write(content);
     }
 
     private class OpsShuffleDataService extends OpsShuffleDataGrpc.OpsShuffleDataImplBase {
         @Override
         public StreamObserver<Page> transfer(StreamObserver<Ack> responseObserver) {
             return new StreamObserver<Page>() {
-                String path = null;
-                int count = 0;
+                // String path = null;
+                // int count = 0;
                 @Override
                 public void onNext(Page page) {
                     try {
+                        int pageNum = page.getPageNum();
                         ByteString content = page.getContent();
-                        String filename = page.getPath().intern();
-                        synchronized(filename) {
-                            File file = new File(filename);
-                            if(!file.exists()) {
-                                file.createNewFile();
-                            }
-                            ByteSink byteSink = Files.asByteSink(file, FileWriteMode.APPEND);
-                            byteSink.write(content.toByteArray());
-                        }
+                        String filename = page.getPath();
+                        
+                        write(filename, content.toByteArray());
 
-                        if(path == null) {
-                            path = filename;
-                        }
-                        count++;
+                        Ack ack = Ack.newBuilder().setPageNum(pageNum).build();
+                        responseObserver.onNext(ack);
                         // logger.debug("Receive page: {Path: " + file.toString() + ", Length: " + file.length() + "}");
                     } catch (Exception e){
                         e.printStackTrace();
@@ -158,9 +194,10 @@ public class OpsShuffleHandler extends Thread {
 
                 @Override
                 public void onCompleted() {
-                    logger.debug("Receive file: " + path + ", pages count: " + count);
-                    Ack ack = Ack.newBuilder().setIsDone(true).build();
-                    responseObserver.onNext(ack);
+                    // logger.debug("Receive file: " + path + ", pages count: " + count);
+                    // Ack ack = Ack.newBuilder().setIsDone(true).build();
+                    // responseObserver.onNext(ack);
+                    flushStreams();
                     responseObserver.onCompleted();
                 }
             };

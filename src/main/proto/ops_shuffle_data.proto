@@ -13,12 +13,12 @@ service OpsShuffleData {
 
 message Page {
     bytes content = 1;
-    // bytes pointers = 2;
-    repeated int64 offsets = 2;
-    repeated int64 lengths = 3;
-    string path = 4;
+    int32 pageNum = 2;
+    string path = 3;
+    // repeated int64 offsets = 3;
+    // repeated int64 lengths = 4;
 }
 
 message Ack {
-    bool isDone = 1;
+    int32 pageNum = 1;
 }
